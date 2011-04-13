@@ -12,10 +12,16 @@ html, body {
     height: 100%;
 }
 body {
+    background-color: forestgreen;
+    color: white;
     margin: 0;
     overflow: hidden;
 }
-#header {
+#info {
+    font-family: helvetica;
+    font-size: large;
+    margin-top: 20px;
+    padding-top: 1em;
     text-align: center;
 }
 .cards {
@@ -24,1157 +30,1272 @@ body {
 </style>
 <title>Spider</title>
 <script type="text/javascript">
-var spider = (function () {
-var OCWIDTH = 72;
-var OCHEIGHT = 96
-var scale = 1;
-var CWIDTH = OCWIDTH / scale;
-var CHEIGHT = OCHEIGHT / scale;
-var MAX_VSPACE = Math.floor(CHEIGHT / 3);
-var canvas;
-var green = "rgb(34, 139, 34)"; // forestgreen
-var tgreen = "rgba(34, 139, 34, 0.5)";
-var ctx;
-var hspace;
-var hoffset;
-var voffset;
-var spades;
-var hearts;
-var clubs;
-var diamonds;
-var offsetLeft;
-var offsetTop;
-var board;
-var hide = false;
-/*
-var button = {'undo':null, 'redo':null, 'deal':null, 'start':null, 'hide':null,
-        };
- */
-var left;
-var series;
-var moves;
-var hidden;
-var conf = {'nsuits':4, 'seed':0, 'hide':1, 'moves':''};
+/*jslint plusplus: false, continue: true */
+/*global console, localStorage */
+(function () {
+    var OCWIDTH = 72,
+        OCHEIGHT = 96,
+        scale = 1,
+        CWIDTH = OCWIDTH / scale,
+        CHEIGHT = OCHEIGHT / scale,
+        MAX_VSPACE = Math.floor(CHEIGHT / 3),
+        canvas,
+        green = "rgb(34, 139, 34)", // forestgreen
+        tgreen = "rgba(34, 139, 34, 0.5)",
+        ctx,
+        hspace,
+        hoffset,
+        voffset,
+        cards,
+        board,
+        hide = false,
+        conf = {nsuits: '4', seed: '0', hide: '0', moves: ''},
+        info,
+        game,
+        view,
+        control,
+        FALSE = false, // to allow disabling code with if and keep jslint happy
+        FACES,
+        SUITS;
 
-function load() {
-    loadState();
-    /*
-    var nb = 0;
-    for (var b in button) {
-        nb++;
-    }
-    var part = Math.floor(100 / nb - 1);
-    for (var b in button) {
-        button[b] = document.getElementById(b);
-        button[b].style.width = "" + part + "%";
-    }
-    */
-    left = document.getElementById('left');
-    series = document.getElementById('series');
-    moves = document.getElementById('moves');
-    hidden = document.getElementById('hidden');
-    spades = document.getElementById('spades');
-    hearts = document.getElementById('hearts');
-    clubs = document.getElementById('clubs');
-    diamonds = document.getElementById('diamonds');
-    cards = [spades, hearts, clubs, diamonds]
-    board = new Board();
-    start(conf['seed']);
-    canvas = document.getElementById('board');
-    canvas.addEventListener("mousedown", mouseDown, false);
-    canvas.addEventListener("mouseup", mouseUp, false);
-    canvas.addEventListener("touchstart", touch, false);
-    canvas.addEventListener("touchmove", touch, false);
-    canvas.addEventListener("touchend", touch, false);
-    canvas.addEventListener("touchcancel", touch, false);
-    resize();
-}
-
-function resize() {
-    offsetLeft = 0;
-    offsetTop = 0;
-    for (var obj = canvas; obj; obj = obj.offsetParent) {
-        offsetLeft += obj.offsetLeft;
-        offsetTop += obj.offsetTop;
-    }
-    canvas.width = document.body.offsetWidth;
-    canvas.height = document.body.offsetHeight -
-        document.getElementById("header").offsetHeight;
-    console.log("resize: " + canvas.width + "x" + canvas.height +
-            "+" + offsetLeft + "," + offsetTop);
-    ctx = canvas.getContext('2d');
-    ctx.fillStyle = green;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    var ncol = board.columns.length;
-    hspace = Math.floor((canvas.width - CWIDTH) / (ncol - 1));
-    if (hspace > CWIDTH) {
-        hoffset = Math.floor((canvas.width - CWIDTH * ncol) / (ncol + 1));
-        hspace  = CWIDTH + hoffset;
-        hoffset = Math.floor((canvas.width - ncol * hspace) / 2);
-        hoffset += Math.floor((hspace - CWIDTH) / 2);
-    }
-    else {
-        hoffset = Math.floor((canvas.width - (ncol - 1) * hspace - CWIDTH) / 2);
-    }
-    voffset = 20;
-    drawBoard(true);
-}
-
-function saveState() {
-    var st = '?nsuits=' + board.deck.nsuits + '&seed=' + board.deck.seed +
-            '&hide=' + (hide ? 1 : 0) + '&moves=' + board.moves;
-    localStorage.setItem("state", st);
-}
-
-function loadState() {
-    var st = localStorage.getItem("state");
-    console.log("state=", st);
-    var params = st ? st.split(/[?=&]/) : [''];
-    for (var i = 1; i + 1 < params.length; i += 2) {
-        conf[params[i]] = params[i + 1];
-    }
-    if (conf['hide'] == '0') {
-        hide = false;
-    }
-}
-
-function start(seed) {
-    var newseed = false;
-    if (!seed) {
-        seed = new Date().getTime();
-        newseed = true;
-    }
-    board.start(conf['nsuits'], seed);
-    if (newseed)
-        return;
-    for (var i = 0; i + 2 < conf['moves'].length; i += 3) {
-        if (conf['moves'].substr(i, 3) == "FFF") {
-            board.deal();
-            continue;
-        }
-        column = board.columns[parseInt(conf['moves'].substr(i, 1))];
-        card = column.cardAt(parseInt(conf['moves'].substr(i + 1, 1), 16));
-        column.clickOnCard(card);
-        var d = conf['moves'].substr(i + 2, 1);
-        if (d != 'F') {
-            board.columns[parseInt(d)].clickOnCard(null);
-        }
-    }
-}
-
-function drawBoard(force) {
-    /*
-    button['undo'].disabled = !board.canUndo();
-    button['redo'].disabled = !board.canRedo();
-    button['deal'].disabled = !board.canDeal();
-    button['start'].disabled = !board.canStart();
-    button['hide'].innerHTML = hide ? 'Show' : 'Hide';
-     */
-
-    if (left) left.innerHTML = board.deckSize();
-    if (series) series.innerHTML = board.countSeries();
-    if (moves) moves.innerHTML = board.countMoves();
-    if (hidden) hidden.innerHTML = board.countHidden();
-
-    cover = {x: 0};
-    for (var i = 0; i < board.columns.length; i++) {
-        if (false && !force && !board.columns[i].isModified()) {
-            continue;
-        }
-        drawColumn(i, hoffset + i * hspace, voffset, cover);
-        if (!board.getCarry() || board.getSrc() != board.columns[i]) {
-            board.columns[i].resetModified();
-        }
-    }
-}
-
-function column_vspace(len, clen) {
-    var vspace = MAX_VSPACE;
-    if (clen) {
-        if (len + clen > 2) {
-            vspace = (canvas.height - voffset - 2 * CHEIGHT - MAX_VSPACE) / 
-                (len + clen - 2);
-        }
-    }
-    else {
-        if (len > 1) {
-            vspace = (canvas.height - CHEIGHT - voffset - 10) / (len - 1);
-        }
-    }
-    vspace = Math.floor(vspace);
-    if (vspace < 0) {
-        vspace = 0;
-    }
-    if (vspace > MAX_VSPACE) {
-        vspace = MAX_VSPACE;
-    }
-    return vspace;
-}
-
-function drawColumn(i, x, y, cover) {
-    var column = board.columns[i];
-    var len = column.length();
-    var carry = board.getCarry();
-    var clen = (carry && board.getSrc() == column) ? carry.length() : 0;
-    var vspace = column_vspace(len, clen);
-    var j = 0;
-    for (var c = column.bottom; c; c = c.up, j++) {
-        drawCard(c, x, y + vspace * j, CWIDTH, 
-                c != column.top ? vspace : CHEIGHT);
-    }
-    var ex = x + CWIDTH;
-    var ey = y + (j == 0 ? 0 : vspace * (j - 1) + CHEIGHT);
-    if (cover.x < x) {
-        cover.x = x;
-    }
-    if (cover.x < ex) {
-        ctx.fillRect(cover.x, ey, ex - cover.x, canvas.height - ey);
-        cover.x = ex;
-    }
-    if (len == 0) {
-        ctx.save();
-        ctx.fillStyle = tgreen;
-        ctx.fillRect(x, y, CWIDTH, CHEIGHT)
-        ctx.restore();
-    }
-    if (clen > 0) {
-        j = 0;
-        for (var c = carry.bottom, j = 0; c; c = c.up, j++) {
-            drawCard(c, x, 
-                    canvas.height - vspace * (clen - 1 - j) - CHEIGHT, CWIDTH,
-                    c != carry.top ? vspace : CHEIGHT);
-        }
-    }
-}
-
-function drawCard(card, x, y, w, h) {
-    if (!hide || card.showing) {
-        ctx.drawImage(cards[card.suit.ord], OCWIDTH * (card.face.value - 1), 
-                0, scale * w, scale * h, x, y, w, h);
-    }
-    if (!card.showing) {
-        if (hide) {
-            ctx.fillRect(x, y, CWIDTH, CHEIGHT);
-            ctx.strokeRect(x + 3, y + 3, CWIDTH - 6, CHEIGHT - 6);
-        }
-        else {
-            ctx.save();
-            ctx.fillStyle = "rgba(0, 0, 0, .2)";
-            ctx.fillRect(x, y, w, h)
-            ctx.restore();
-        }
-    }
-}
-
-var bx;
-var by;
-var bt;
-var prev_pos = {i: -1, j: -1};
-
-function mouseDown(event) {
-    console.log("down: " + 
-            (event.clientX - offsetLeft) + "," + (event.clientY - offsetTop));
-    bx = event.clientX;
-    by = event.clientY;
-    bt = new Date().getTime();
-    canvas.addEventListener("mousemove", mouseMove, false);
-    changePos(bx, by);
-    return true;
-}
-
-function mouseMove(event) {
-    if (false) console.log("move: " + 
-            (event.clientX - offsetLeft) + "," + (event.clientY - offsetTop));
-    changePos(event.clientX, event.clientY);
-    return true;
-}
-
-function mouseUp(event) {
-    console.log("up: " + 
-            (event.clientX - offsetLeft) + "," + (event.clientY - offsetTop));
-    canvas.removeEventListener("mousemove", mouseMove, false);
-    changePos(-1, -1);
-    ex = event.clientX;
-    ey = event.clientY;
-    et = new Date().getTime();
-    var hor = 0;
-    if (ex - bx > hspace * 4) {
-        hor = 1;
-    }
-    else if (bx - ex > hspace * 4) {
-        hor = -1;
-    }
-    var ver = 0;
-    if (ey - by > MAX_VSPACE * 4) {
-        ver = 1;
-    }
-    if (by - ey > MAX_VSPACE * 4) {
-        ver = -1;
-    }
-    var isClick = false;
-    if (et - bt < 2000) {
-        if (hor > 0 && ver == 0) {
-            console.log("redo");
-            return pressChar('r');
-        }
-        if (hor < 0 && ver == 0) {
-            console.log("undo");
-            return pressChar('u');
-        }
-        if (ver > 0 && hor == 0) {
-            console.log("deal");
-            return pressChar('d');
-        }
-        if (ver < 0 && hor == 0) {
-            console.log("restart");
-            return pressChar('s');
-        }
-        if (ver == 0 && hor == 0) {
-            isClick = true;
-        }
-    }
-    else {
-        isClick = true;
-    }
-    if (isClick) {
-        console.log("click: " + ex + "," + ey);
-        return click(event);
-    }
-    console.log("noclick: " + ex + "," + ey);
-}
-
-var saved_col;
-var saved_image;
-var saved_x;
-var saved_card = null;
-
-function changePos(x, y) {
-    var i = -1;
-    var j = -1;
-    var vspace;
-    if (x != -1) {
-        x -= offsetLeft;
-        i = columnAtX(x);
-        if (y != -1) {
-            y -= offsetTop;
-            var o = cardAtY(i, y);
-            j = o.j;
-            vspace = o.vspace;
-        }
-    }
-    if (prev_pos.i == i && prev_pos.j == j) {
-        return;
-    }
-    if (prev_pos.i != -1 && prev_pos.i == saved_col) {
-        ctx.putImageData(saved_image, hoffset + saved_col * hspace, 0);
-        saved_col = -1;
-    }
-    var margin = 20;
-    var saved_y = voffset;
-    if (saved_card != null) {
-        ctx.putImageData(saved_card, saved_x, saved_y);
-        saved_card = null;
-    }
-    if (i != -1) {
-        var cx = hoffset + i * hspace;
-        var cw = CWIDTH < hspace || i == board.columns.length - 1 ? 
-            CWIDTH : hspace;
-        saved_col = i;
-        saved_image = ctx.getImageData(cx, 0, cw, canvas.height);
-        ctx.save();
-        ctx.fillStyle = "rgba(128, 32, 32, .2)";
-        ctx.fillRect(cx, 0, cw, canvas.height);
-        if (j != -1) {
-            var card = board.columns[i].cardAt(j);
-            if (card != null && card.showing && card.isFlush()) {
-                var cy = voffset + j * vspace;
-                var ch = j == board.columns[i].length() - 1 ? CHEIGHT : vspace;
-                ctx.fillStyle = "rgba(32, 32, 128, .8)";
-                ctx.fillRect(cx, cy, cw, ch);
-                saved_x = i < 5 ?  canvas.width - CWIDTH - 2 * margin : 0;
-                saved_card = ctx.getImageData(saved_x, saved_y, 
-                        CWIDTH + 2 * margin, CHEIGHT + 2 * margin);
-                ctx.fillRect(saved_x, saved_y, 
-                        CWIDTH + 2 * margin, CHEIGHT + 2 * margin);
-                drawCard(card, 
-                        saved_x + margin, saved_y + margin, CWIDTH, CHEIGHT);
+    view = (function () {
+        function column_vspace(len, clen) {
+            var vspace = MAX_VSPACE;
+            if (clen) {
+                if (len + clen > 2) {
+                    vspace = (canvas.height - voffset - 
+                        2 * CHEIGHT - MAX_VSPACE) / (len + clen - 2);
+                }
+            } else {
+                if (len > 1) {
+                    vspace = (canvas.height - CHEIGHT - voffset - 10) / 
+                        (len - 1);
+                }
             }
-        }
-        ctx.restore();
-    }
-    prev_pos.i = i;
-    prev_pos.j = j;
-}
-
-function click(event) {
-    clickAt((event.clientX - offsetLeft), (event.clientY - offsetTop));
-    return true;
-}
-
-function clickAt(x, y) {
-    var i = columnAtX(x);
-    if (i < 0) {
-        return;
-    }
-    var j = cardAtY(i, y).j;
-    var column = board.columns[i];
-    column.clickOnCard(column.cardAt(j));
-    drawBoard(false);
-    saveState();
-}
-
-function columnAtX(x) {
-    var maxhd = hoffset + (board.columns.length - 1) * hspace + CWIDTH;
-    var i = -1;
-    if (x >= hoffset || x < maxhd) {
-        i = Math.floor((x - hoffset) / hspace);
-        if (x >= hoffset + i * hspace + CWIDTH) {
-            i = -1;
-        }
-        if (i > board.columns.length - 1) {
-            i = board.columns.length - 1;
-        }
-    }
-    return i;
-}
-
-function cardAtY(i, y) {
-    var pos = {j: -1, vspace: -1};
-    if (i < 0) {
-        return pos;
-    }
-    var column = board.columns[i];
-    var len = column.length();
-    var carry = board.getCarry();
-    var clen = (carry && board.getSrc() == column) ? carry.length() : 0;
-    pos.vspace = column_vspace(len, clen);
-    pos.j = -1;
-    var maxvd = voffset + (len - 1) * pos.vspace + CHEIGHT;
-    if (y >= voffset && y < maxvd) {
-        pos.j = Math.floor((y - voffset) / pos.vspace);
-        if (pos.j > len - 1) {
-            pos.j = len - 1;
-        }
-    }
-    return pos;
-}
-
-function keypress(event) {
-    var k = event.which;
-    return pressChar(String.fromCharCode(k));
-}
-
-function pressChar(c) {
-    var msg = '';
-    var force = false;
-    if (c == 'd') {
-        if (board.canDeal()) {
-            board.deal();
-            saveState();
-        }
-        else {
-            msg = 'cannot deal'
-        }
-    }
-    else if (c == 'u') {
-        if (board.canUndo()) {
-            board.undo();
-        }
-        else {
-            msg = 'cannot undo'
-        }
-    }
-    else if (c == 'r') {
-        if (board.canRedo()) {
-            board.redo();
-        }
-        else {
-            msg = 'cannot redo'
-        }
-    }
-    else if (c == 's') {
-        if (board.canStart()) {
-            start(0);
-            saveState();
-        }
-        else {
-            msg = 'cannot start'
-        }
-    }
-    else if (c == 'h') {
-        hide = !hide;
-        force = true;
-    }
-    if (msg) {
-        console.log(msg);
-    }
-    drawBoard(force);
-    return true;
-}
-
-function ARC4(seed) {
-    this.S  = new Array(256);
-    for (var n = 0; n < 256; n++) {
-        this.S[n] = n;
-    }
-    var k = []
-    while (seed) {
-        k.push(seed % 256);
-        seed = Math.floor(seed / 256);
-    }
-    this.i = 0;
-    this.j = 0;
-    for (; this.i < 256; this.i++) {
-        this.j = (k[this.i % k.length] + this.S[this.i] + this.j) & 0xff;
-        this.swap();
-    }
-    this.i = 0;
-    this.j = 0;
-    for (var n = 0; n < 256; n++) {
-        this.prg();
-    }
-}
-ARC4.prototype.swap = function () {
-    var tmp = this.S[this.i];
-    this.S[this.i] = this.S[this.j];
-    this.S[this.j] = tmp;
-}
-ARC4.prototype.prg = function () {
-    this.i = (this.i + 1) & 0xff;
-    this.j = (this.j + this.S[this.i]) & 0xff;
-    this.swap();
-    return this.S[(this.S[this.i] + this.S[this.j]) & 0xff];
-}
-ARC4.prototype.random = function () {
-    var r = 0;
-    for (var n = 0; n < 7; n++) {
-        r = r * 256 + this.prg();
-    }
-    return r / 0x100000000000000;
-}
-
-function Card(face, suit) {
-    this.face = face;
-    this.suit = suit;
-    this.up = null;
-    this.down = null;
-    this.showing = false;
-}
-Card.prototype.skipFlush = function () {
-    var c = this;
-    while (true) {
-        var d = c;
-        c = c.up;
-        if (c == null) {
-            return d;
-        }
-        if (c.suit.name != d.suit.name || 
-                c.face.value != d.face.value - 1) {
-            return d;
-        }
-    }
-}
-Card.prototype.isFlush = function () {
-    return this.skipFlush().up == null;
-}
-Card.prototype.toString = function () {
-    var s = "";
-    if (!this.showing) {
-        s = "_";
-    }
-    return s + this.face.toString() + this.suit.toString();
-}
-
-function Suit(name, chr, ord) {
-    this.name = name;
-    this.chr = chr;
-    this.ord = ord;
-}
-Suit.prototype.toString = function () {
-    return this.name;
-}
-var SUITS = [new Suit("S", "\u2663", 0), new Suit("H", "\u2665", 1), 
-        new Suit("C", "\u2660", 2), new Suit("D", "\u2666", 3)];
-
-function Face(name, value) {
-    this.name = name;
-    this.value = value;
-}
-Face.prototype.toString = function () {
-    return this.name;
-}
-var FACES = [new Face("A", 1), new Face("2", 2), new Face("3", 3), 
-    new Face("4", 4), new Face("5", 5), new Face("6", 6), new Face("7", 7), 
-    new Face("8", 8), new Face("9", 9), new Face("T", 10), 
-    new Face("J", 11), new Face("Q", 12), new Face("K", 13)];
-
-function Deck(ndecks, nsuits, seed) {
-    this.nsuits = nsuits;
-    if (nsuits == null) {
-        this.nsuits = SUITS.length;
-    }
-    this.seed = seed;
-    if (!seed) {
-        this.seed = new Date().getTime();
-    }
-    var suits = [];
-    for (var i = 0; i < SUITS.length; i++) {
-        suits.push(SUITS[i % this.nsuits]);
-    }
-    this.deck = [];
-    for (var d = 0; d < ndecks; d++) {
-        for (var f = 0; f < FACES.length; f++) {
-            for (var s = 0; s < suits.length; s++) {
-                this.deck.push(new Card(FACES[f], suits[s]));
+            vspace = Math.floor(vspace);
+            if (vspace < 0) {
+                vspace = 0;
             }
-        }
-    }
-    var r = new ARC4(this.seed);
-    for (var i = 0; i < this.deck.length; i++) {
-        var j = i + Math.floor(r.random() * (this.deck.length - i));
-        var c = this.deck[i];
-        this.deck[i] = this.deck[j];
-        this.deck[j] = c;
-    }
-}
-Deck.prototype.draw = function () {
-    if (this.deck.length == 0) {
-        return null;
-    }
-    return this.deck.pop();
-}
-Deck.prototype.undoDraw = function (card) {
-    if (card != null) {
-        this.deck.push(card);
-    }
-}
-Deck.prototype.isEmpty = function () {
-    return this.deck.length <= 0;
-}
-Deck.prototype.size = function () {
-    return this.deck.length;
-}
-
-function Column(board, top, bottom) {
-    this.board = board;
-    this.bottom = bottom;
-    this.top = top;
-    this.modified = true;
-}
-Column.prototype.length = function () {
-    var l = 0;
-    var c = this.top;
-    while (c != null) {
-        l++;
-        c = c.down;
-    }
-    return l;
-}
-Column.prototype.cardAt = function (cardI) {
-    if (cardI < 0) {
-        return null;
-    }
-    var c = this.bottom;
-    var i = 0;
-    while (i < cardI && c != null) {
-        c = c.up;
-        i++;
-    }
-    return c;
-}
-Column.prototype.selectCard = function () {
-    var c = this.top;
-    while (c.down != null && c.down.showing && c.down.isFlush()) {
-        c = c.down;
-    }
-    return c;
-}
-Column.prototype.selectDst = function (card) {
-    var columns = this.board.columns;
-    var empty = null;
-    var faceMatch = null;
-    var faceAndSuitMatch = null;
-    for (var i = 0; i < 10; i++) {
-        if (columns[i] == this) {
-        }
-        else if (columns[i].top == null) {
-            empty = columns[i];
-        }
-        else if (columns[i].canJoinWithCard(card)) {
-            faceMatch = columns[i];
-            if (columns[i].top.suit.name == card.suit.name) {
-                faceAndSuitMatch = columns[i];
+            if (vspace > MAX_VSPACE) {
+                vspace = MAX_VSPACE;
             }
+            return vspace;
         }
-    }
-    var dst = faceAndSuitMatch;
-    if (dst == null) {
-        dst = faceMatch;
-    }
-    if (dst == null) {
-        dst = empty;
-    }
-    return dst;
-}
-Column.prototype.clickOnCard = function (card) {
-    var m = this.board.getCurrentMove();
-    if (m == null) {
-        var dst = null;
-        var autoSelect = false;
-        if (card == null || !card.showing || !card.isFlush()) {
-            if (this.top == null || !this.top.showing) {
+
+        function drawCard(card, x, y, w, h) {
+            if (h <= 0) {
                 return;
             }
-            card = this.selectCard();
-            autoSelect = true;
-        }
-        if (card.face.name == "K" && this.top.face.name == "A") {
-            dst = this.board.getEmptySeries();
-        }
-        else if (autoSelect) {
-            dst = this.selectDst(card);
-        }
-        this.board.setCurrentMove(new Move(this, card, dst));
-        if (dst != null) {
-            this.board.saveCurrentMove();
-        }
-    }
-    else {
-        if (m.addDst(this)) {
-            if (m.src == this) { // undo
-                this.board.setCurrentMove(null);
+            if (!hide || card.showing) {
+                ctx.drawImage(cards[card.suit.ord], 
+                        OCWIDTH * (card.face.value - 1), 0, 
+                        scale * w, scale * h, x, y, w, h);
             }
-            else {
-                this.board.saveCurrentMove();
+            if (!card.showing) {
+                if (hide) {
+                    ctx.fillRect(x, y, CWIDTH, CHEIGHT);
+                    ctx.strokeRect(x + 3, y + 3, CWIDTH - 6, CHEIGHT - 6);
+                } else {
+                    ctx.save();
+                    ctx.fillStyle = "rgba(0, 0, 0, .2)";
+                    ctx.fillRect(x, y, w, h);
+                    ctx.restore();
+                }
             }
         }
-    }
-}
-Column.prototype.isModified = function () {
-    return this.modified;
-}
-Column.prototype.resetModified = function () {
-    this.modified = false;
-}
-Column.prototype.setModifed = function () {
-    this.modified = true;
-}
-Column.prototype.countHidden = function () {
-    var count = 0;
-    var c = this.bottom;
-    while (c != null && !c.showing) {
-        count++;
-        c = c.up;
-    }
-    return count;
-}
-Column.prototype.isTopShowing = function () {
-    if (this.top != null) {
-        return this.top.showing;
-    }
-    return false;
-}
-Column.prototype.showTop = function (val) {
-    if (this.top != null) {
-        if (this.top.showing != val) {
-            this.modified = true;
-            this.top.showing = val;
+
+        function drawColumn(i, x, y, cover) {
+            var column = board.columns[i],
+                len = column.length(),
+                carry = board.getCarry(),
+                clen = (carry && board.getSrc() === column) ? 
+                    carry.length() : 0,
+                vspace = column_vspace(len, clen),
+                j = 0,
+                c,
+                ex,
+                ey;
+            for (c = column.bottom; c; c = c.up, j++) {
+                drawCard(c, x, y + vspace * j, CWIDTH, 
+                        c !== column.top ? vspace : CHEIGHT);
+            }
+            ex = x + CWIDTH;
+            ey = y + (j === 0 ? 0 : vspace * (j - 1) + CHEIGHT);
+            if (cover.x < x) {
+                cover.x = x;
+            }
+            if (cover.x < ex) {
+                ctx.fillRect(cover.x, ey, ex - cover.x, canvas.height - ey);
+                cover.x = ex;
+            }
+            if (len === 0) {
+                ctx.save();
+                ctx.fillStyle = tgreen;
+                ctx.fillRect(x, y, CWIDTH, CHEIGHT);
+                ctx.restore();
+            }
+            if (clen > 0) {
+                j = 0;
+                for (c = carry.bottom, j = 0; c; c = c.up, j++) {
+                    drawCard(c, x, 
+                            canvas.height - vspace * (clen - 1 - j) - CHEIGHT, 
+                            CWIDTH, c !== carry.top ? vspace : CHEIGHT);
+                }
+            }
         }
-    }
-}
-Column.prototype.canJoinWithCard = function (card) {
-    if (this.top == null) {
-        return true;
-    }
-    if (this.top.face.value == card.face.value + 1) {
-        return true;
-    }
-    return false;
-}
-Column.prototype.canJoinWith = function (column) {
-    return this.canJoinWithCard(column.bottom);
-}
-Column.prototype.joinWith = function (column) {
-    if (column == null) {
-        return;
-    }
-    this.modified = true;
-    column.bottom.down = this.top;
-    if (this.top != null) {
-        this.top.up = column.bottom;
-    }
-    else {
-        this.bottom = column.bottom;
-    }
-    this.top = column.top;
-}
-Column.prototype.splitAt = function (card) {
-    if (card == null) {
-        return null;
-    }
-    this.modified = true;
-    column = new Column(this.board, this.top , card);
-    this.top = card.down;
-    if (this.top != null) {
-        this.top.up = null;
-    }
-    else {
-        this.bottom = null;
-    }
-    card.down = null;
-    return column;
-}
-Column.prototype.getCardIndex = function (card) {
-    var i = 0;
-    var d = this.bottom;
-    while (d != null) {
-        if (d == card) {
+
+        function update(force) {
+            var cover = {x: 0},
+                i;
+    
+            for (i = 0; i < board.columns.length; i++) {
+                if (FALSE && !force && !board.columns[i].isModified()) {
+                    continue;
+                }
+                drawColumn(i, hoffset + i * hspace, voffset, cover);
+                if (!board.getCarry() || board.getSrc() !== board.columns[i]) {
+                    board.columns[i].resetModified();
+                }
+            }
+        }
+
+        function columnAtX(x) {
+            var maxhd = hoffset + 
+                    (board.columns.length - 1) * hspace + CWIDTH,
+                i = -1;
+            if (x >= hoffset || x < maxhd) {
+                i = Math.floor((x - hoffset) / hspace);
+                if (x >= hoffset + i * hspace + CWIDTH) {
+                    i = -1;
+                }
+                if (i > board.columns.length - 1) {
+                    i = board.columns.length - 1;
+                }
+            }
             return i;
         }
-        i++;
-        d = d.up;
-    }
-    throw (new Error('cannot find split card in column'));
-}
-Column.prototype.getIndex = function () {
-    return this.board.getColumnIndex(this);
-}
-Column.prototype.toString = function () {
-    var s = "";
-    var notShowing = 0;
-    var c = this.bottom;
-    while (c != null) {
-        if (c.showing) {
-            var d = c.skipFlush();
-                s = s + c.toString();
-            if (d != c) {
-                s += " .." + d.toString();
-                c = d;
+
+        function cardAtY(i, y) {
+            var pos = {j: -1, vspace: -1},
+                column,
+                len,
+                carry,
+                clen,
+                maxvd;
+            if (i < 0) {
+                return pos;
             }
+            column = board.columns[i];
+            len = column.length();
+            carry = board.getCarry();
+            clen = (carry && board.getSrc() === column) ? 
+                carry.length() : 0;
+            pos.vspace = column_vspace(len, clen);
+            pos.j = -1;
+            maxvd = voffset + (len - 1) * pos.vspace + CHEIGHT;
+            if (y >= voffset && y < maxvd) {
+                pos.j = Math.floor((y - voffset) / pos.vspace);
+                if (pos.j > len - 1) {
+                    pos.j = len - 1;
+                }
+            }
+            return pos;
         }
-        else {
-            notShowing = notShowing + 1;
+
+        function resize() {
+            var ncol;
+            canvas.width = document.body.offsetWidth;
+            canvas.height = document.body.offsetHeight;
+            console.log("resize: " + canvas.width + "x" + canvas.height);
+            ctx = canvas.getContext('2d');
+            ctx.fillStyle = green;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ncol = board.columns.length;
+            hspace = Math.floor((canvas.width - CWIDTH) / (ncol - 1));
+            if (hspace > CWIDTH) {
+                hoffset = Math.floor((canvas.width - CWIDTH * ncol) / 
+                        (ncol + 1));
+                hspace  = CWIDTH + hoffset;
+                hoffset = Math.floor((canvas.width - ncol * hspace) / 2);
+                hoffset += Math.floor((hspace - CWIDTH) / 2);
+            } else {
+                hoffset = Math.floor((canvas.width - (ncol - 1) * hspace - 
+                        CWIDTH) / 2);
+            }
+            voffset = 20;
+            update(true);
         }
-        c = c.up;
-    }
-    if (notShowing == 0) {
-        return s;
-    }
-    return "[" + notShowing + "]" + s;
-}
 
-function Move(src, split, dst) {
-    this.src = src;
-    this.srcI = src.getIndex();
-    this.split = split;
-    this.splitI = src.getCardIndex(split);
-    this.dst = null;
-    this.carry = null;
-    this.doSplit();
-    this.topShowing = src.isTopShowing();
-    if (dst != null) {
-        this.addDst(dst);
-    }
-}
-Move.prototype.addDst = function (dst) {
-    if (dst  != this.src && !dst.canJoinWith(this.carry)) {
-        return false;
-    }
-    this.dst = dst;
-    this.dstI = dst.getIndex();
-    this.doJoin();
-    return true;
-}
-Move.prototype.doSplit = function () {
-    this.carry = this.src.splitAt(this.split);
-}
-Move.prototype.doJoin = function () {
-    this.dst.joinWith(this.carry);
-    this.carry = null;
-    if (this.dst == this.src) { // undo
-        return;
-    }
-    this.src.showTop(true);
-    return;
-}
-Move.prototype.undo = function () {
-    if (this.dst == null) {
-        this.dst = this.src;
-        this.doJoin();
-    }
-    else {
-        this.carry = this.dst.splitAt(this.split);
-        this.src.showTop(this.topShowing);
-        this.src.joinWith(this.carry);
-        this.carry = null;
-    }
-}
-Move.prototype.redo = function () {
-    this.doSplit();
-    this.doJoin();
-}
-Move.prototype.toString = function () {
-    s = "";
-    if (this.carry) {
-        return s;
-    }
-    s = this.srcI.toString();
-    s += this.splitI.toString(16);
-    s += this.dstI >= 10 ? 'F' : this.dstI.toString();
-    return s;
-}
+        return {
+            drawCard: drawCard,
+            columnAtX: columnAtX,
+            cardAtY: cardAtY,
+            resize: resize,
+            update: update
+        };
+    }());
 
-function Stack() {
-    this.reset();
-}
-Stack.prototype.reset = function () {
-    this.vector = [];
-    this.done = 0;
-}
-Stack.prototype.canUndo = function () {
-    return this.done > 0;
-}
-Stack.prototype.canRedo = function () {
-    return this.done < this.vector.length;
-}
-Stack.prototype.size = function () {
-    return this.done;
-}
-Stack.prototype.peek = function () {
-    return this.vector[this.done - 1];
-}
-Stack.prototype.pop = function () {
-    return this.vector[--this.done];
-}
-Stack.prototype.push = function (move) {
-    this.vector.splice(this.done, this.vector.length - this.done, move);
-    this.done++;
-}
-Stack.prototype.rePush = function () {
-    return this.vector[this.done++];
-}
-Stack.prototype.toString = function () {
-    s = "";
-    for (var i = 0; i < this.done; i++) {
-        s += this.vector[i].toString();
+    function saveState() {
+        var st;
+        conf.nsuits = board.deck.nsuits.toString();
+        conf.seed = board.deck.seed.toString();
+        conf.hide = hide ? '1' : '0';
+        conf.moves = board.moves.toString();
+        st = '?nsuits=' + conf.nsuits + '&seed=' + conf.seed + 
+            '&hide=' + conf.hide + '&moves=' + conf.moves;
+        localStorage.setItem("state", st);
     }
-    return s;
-}
 
-function Board() {
-    this.deck = null;
-    this.columns = [];
-    for (var i = 0; i < 10; i++) {
-        var cc = new Column(this, null, null);
-        this.columns.push(cc);
+    function loadState() {
+        var st = localStorage.getItem("state"),
+            params = st ? st.split(/[?=&]/) : [''],
+            i;
+        for (i = 1; i + 1 < params.length; i += 2) {
+            console.log("conf." + params[i] + " = (" + 
+                    params[i + 1].length + ") " + params[i + 1]);
+            conf[params[i]] = params[i + 1];
+        }
+        if (conf.hide === '0') {
+            hide = false;
+        }
     }
-    this.series = [];
-    for (var i = 0; i < 8; i++) {
-        var cc = new Column(this, null, null);
-        this.series.push(cc);
-    }
-    this.moves = new Stack();
-    this.current = null;
-}
-Board.isShort = [
-        false, true, true, false, true, true, false, true, true, false];
-Board.prototype.initialDeal = function () {
-    for (var i = 0; i < this.columns.length; i++) {
-        this.columns[i].splitAt(this.columns[i].bottom);
-    }
-    for (var i = 0; i < this.series.length; i++) {
-        this.series[i].splitAt(this.series[i].bottom);
-    }
-    for (var r = 0; r < 6; r++) {
-        for (var i = 0; i < 10; i++) {
-            if (r == 5 && Board.isShort[i]) {
+
+    function start(seed) {
+        var newseed = false,
+            i,
+            column,
+            card,
+            d;
+        if (!parseInt(seed, 10)) {
+            seed = new Date().getTime().toString();
+            newseed = true;
+        }
+        board.start(conf.nsuits, seed);
+        if (newseed) {
+            saveState();
+            return;
+        }
+        for (i = 0; i + 2 < conf.moves.length; i += 3) {
+            if (conf.moves.substr(i, 3) === "FFF") {
+                board.deal();
                 continue;
             }
-            var c = this.deck.draw();
-            var cc = new Column(this, c, c);
-            if (r == 4 && Board.isShort[i] || r == 5) {
-                c.showing = true;
+            column = board.columns[parseInt(conf.moves.substr(i, 1), 16)];
+            card = column.cardAt(parseInt(conf.moves.substr(i + 1, 1), 16));
+            column.clickOnCard(card);
+            d = conf.moves.substr(i + 2, 1);
+            if (d !== 'F') {
+                board.columns[parseInt(d, 16)].clickOnCard(null);
             }
-            this.columns[i].joinWith(cc);
         }
     }
-}
-Board.prototype.start = function (nsuits, seed) {
-    this.moves.reset();
-    this.current = null;
-    nsuits = parseInt(nsuits);
-    if (nsuits != 4 && nsuits != 2 && nsuits != 1) {
-        nsuits = null;
+
+    function message(msg) {
+        console.log(msg);
+        game.style.display = "none";
+        info.style.display = "block";
+        info.innerHTML = msg;
+        setTimeout(function () {
+            info.style.display = "none"; 
+            game.style.display = "block";
+        }, 3000);
     }
-    this.deck = new Deck(2, nsuits, parseInt(seed));
-    this.initialDeal();
-    return this;
-}
-Board.prototype.canStart = function () {
-    return this.deck == null || this.deck.isEmpty() && this.current == null;
-}
-Board.prototype.doDeal = function () {
-    for (var i = 0; i < this.columns.length; i++) {
-        c = this.deck.draw();
-        if (c == null) {
-            throw (new Error('Empty deck'));
+
+    control = (function () {
+        var starting = false,
+            offsetLeft,
+            offsetTop,
+            prev_pos = {i: -1, j: -1},
+            saved_col,
+            saved_image,
+            saved_x,
+            saved_card = null,
+            bx,
+            by,
+            isGesture,
+            timeoutId;
+
+        function clickAt(x, y) {
+            var i = view.columnAtX(x),
+                j,
+                column;
+            if (i < 0) {
+                return;
+            }
+            j = view.cardAtY(i, y).j;
+            column = board.columns[i];
+            column.clickOnCard(column.cardAt(j));
+            view.update(false);
+            saveState();
+            if (board.isGameOpen()) {
+                message("Game Open!");
+            }
         }
-        c.showing = true;
-        this.columns[i].joinWith(new Column(this, c, c));
+
+        function pressChar(c) {
+            var msg = '',
+                force = false,
+                nsuits;
+            if (c === 'd') {
+                if (board.canDeal()) {
+                    board.deal();
+                    saveState();
+                } else if (board.canStart()) {
+                    starting = true;
+                    msg = 'starting';
+                    setTimeout(function () {
+                        message("Please redo to restart, or undo to cancel");
+                    }, 0);
+                } else {
+                    msg = 'cannot deal';
+                }
+            } else if (c === 'u') {
+                if (starting) {
+                    starting = false;
+                    msg = 'restart cancelled';
+                } else if (board.canUndo()) {
+                    board.undo();
+                } else if (board.countMoves() === 0 && !board.canRedo()) {
+                    // TODO: add a better control for this
+                    nsuits = parseInt(conf.nsuits, 10);
+                    nsuits = nsuits * 2;
+                    if (nsuits > 4) {
+                        nsuits = 1;
+                    }
+                    conf.nsuits = nsuits.toString();
+                    message("Playing with " + nsuits + " suit" + 
+                            (nsuits > 1 ? "s" : ""));
+                    start(conf.seed);
+                    saveState();
+                } else {
+                    msg = 'cannot undo';
+                }
+            } else if (c === 'r') {
+                if (starting) {
+                    starting = false;
+                    if (board.canStart()) {
+                        start('0');
+                    } else {
+                        msg = 'cannot start';
+                    }
+                } else if (board.canRedo()) {
+                    board.redo();
+                } else {
+                    msg = 'cannot redo';
+                }
+            } else if (c === 'h') {
+                hide = !hide;
+                force = true;
+            } else if (c === 'i') {
+                message("left: " + board.deckSize() + 
+                        "<br>series: " + board.countSeries() + 
+                        "<br>moves: " + board.countMoves() +
+                        "<br>hidden: " + board.countHidden());
+            }
+            if (msg) {
+                console.log(msg);
+            }
+            view.update(force);
+            return true;
+        }
+
+        function keypress(event) {
+            var k = event.which,
+                c = String.fromCharCode(k);
+            console.log("'" + c + "' pressed");
+            return pressChar(c);
+        }
+
+        function changePos(x, y) {
+            var i = -1,
+                j = -1,
+                vspace,
+                o,
+                margin,
+                saved_y,
+                cx,
+                cy,
+                card,
+                cw,
+                ch;
+            if (x !== -1) {
+                x -= offsetLeft;
+                i = view.columnAtX(x);
+                if (y !== -1) {
+                    y -= offsetTop;
+                    o = view.cardAtY(i, y);
+                    j = o.j;
+                    vspace = o.vspace;
+                }
+            }
+            if (prev_pos.i === i && prev_pos.j === j) {
+                return;
+            }
+            if (prev_pos.i !== -1 && prev_pos.i === saved_col) {
+                ctx.putImageData(saved_image, hoffset + saved_col * hspace, 0);
+                saved_col = -1;
+            }
+            margin = voffset;
+            saved_y = voffset;
+            if (saved_card !== null) {
+                ctx.putImageData(saved_card, saved_x, saved_y);
+                saved_card = null;
+            }
+            if (i !== -1) {
+                cx = hoffset + i * hspace;
+                cw = CWIDTH < hspace || i === board.columns.length - 1 ? 
+                    CWIDTH : hspace;
+                saved_col = i;
+                saved_image = ctx.getImageData(cx, 0, cw, canvas.height);
+                ctx.save();
+                ctx.fillStyle = "rgba(128, 32, 32, .2)";
+                ctx.fillRect(cx, 0, cw, canvas.height);
+                if (j !== -1) {
+                    card = board.columns[i].cardAt(j);
+                    if (card !== null && card.showing && card.isFlush()) {
+                        cy = voffset + j * vspace;
+                        ch = j === board.columns[i].length() - 1 ? 
+                            CHEIGHT : vspace;
+                        ctx.fillStyle = "rgba(32, 32, 128, .8)";
+                        ctx.fillRect(cx, cy, cw, ch);
+                        saved_x = i < 5 ?  
+                            canvas.width - CWIDTH - 2 * margin : 0;
+                        saved_card = ctx.getImageData(saved_x, saved_y, 
+                                CWIDTH + 2 * margin, CHEIGHT + 2 * margin);
+                        ctx.fillRect(saved_x, saved_y, 
+                                CWIDTH + 2 * margin, CHEIGHT + 2 * margin);
+                        view.drawCard(card, saved_x + margin, saved_y + margin, 
+                                CWIDTH, CHEIGHT);
+                    }
+                }
+                ctx.restore();
+            }
+            prev_pos.i = i;
+            prev_pos.j = j;
+        }
+
+        function mouseMove(event) {
+            if (FALSE) {
+                console.log("move: " + (event.clientX - offsetLeft) + "," + 
+                        (event.clientY - offsetTop));
+            }
+            if (!isGesture) {
+                changePos(event.clientX, event.clientY);
+            }
+            return true;
+        }
+
+        function mouseDown(event) {
+            console.log("down: " + (event.clientX - offsetLeft) + "," + 
+                    (event.clientY - offsetTop));
+            bx = event.clientX;
+            by = event.clientY;
+            isGesture = true;
+            canvas.addEventListener("mousemove", mouseMove, false);
+            timeoutId = setTimeout(function () {
+                console.log("gesture timeout");
+                isGesture = false; 
+                mouseMove(event);
+            }, 1500);
+            return true;
+        }
+
+        function mouseUp(event) {
+            var ex,
+                ey,
+                hor,
+                ver,
+                isClick;
+            console.log("up: " + (event.clientX - offsetLeft) + "," + 
+                    (event.clientY - offsetTop));
+            clearTimeout(timeoutId);
+            canvas.removeEventListener("mousemove", mouseMove, false);
+            changePos(-1, -1);
+            ex = event.clientX;
+            ey = event.clientY;
+            hor = 0;
+            if (ex - bx > canvas.width / 2) {
+                hor = 1;
+            } else if (bx - ex > canvas.width / 2) {
+                hor = -1;
+            }
+            ver = 0;
+            if (ey - by > canvas.height / 2) {
+                ver = 1;
+            }
+            if (by - ey > canvas.height / 2) {
+                ver = -1;
+            }
+            isClick = false;
+            if (isGesture) {
+                if (hor > 0 && ver === 0) {
+                    console.log("redo");
+                    return pressChar('r');
+                }
+                if (hor < 0 && ver === 0) {
+                    console.log("undo");
+                    return pressChar('u');
+                }
+                if (ver > 0 && hor === 0) {
+                    console.log("deal");
+                    return pressChar('d');
+                }
+                if (ver < 0 && hor === 0) {
+                    console.log("info");
+                    return pressChar('i');
+                }
+                if (ver === 0 && hor === 0) {
+                    isClick = true;
+                }
+            } else {
+                isClick = true;
+            }
+            if (isClick) {
+                console.log("click: " + ex + "," + ey);
+                clickAt(ex - offsetLeft, ey - offsetTop);
+                return true;
+            }
+            console.log("noclick: " + ex + "," + ey);
+        }
+
+        function touch(event) {
+            event.preventDefault();
+            if (event.type === "touchstart") {
+                return mouseDown(event.changedTouches[0]);
+            }
+            if (event.type === "touchmove") {
+                return mouseMove(event.changedTouches[0]);
+            }
+            if (event.type === "touchend") {
+                return mouseUp(event.changedTouches[0]);
+            }
+        }
+
+        function load(canvas) {
+            var listener;
+            listener = function (e) {e.preventDefault(); };
+            document.addEventListener("touchstart", listener, false);
+            document.addEventListener("touchmove", listener, false);
+            document.body.addEventListener("keypress", keypress, false);
+            canvas.addEventListener("mousedown", mouseDown, false);
+            canvas.addEventListener("mouseup", mouseUp, false);
+            canvas.addEventListener("touchstart", touch, false);
+            canvas.addEventListener("touchmove", touch, false);
+            canvas.addEventListener("touchend", touch, false);
+            canvas.addEventListener("touchcancel", touch, false);
+        }
+
+        function resize() {
+            var obj;
+            offsetLeft = 0;
+            offsetTop = 0;
+            for (obj = canvas; obj; obj = obj.offsetParent) {
+                offsetLeft += obj.offsetLeft;
+                offsetTop += obj.offsetTop;
+            }
+            console.log("resize: +" + offsetLeft + "," + offsetTop);
+        }
+
+        return {
+            resize: resize,
+            load: load
+        };
+    }());
+
+    function ARC4(seed) {
+        /*jslint bitwise: false */
+        var n,
+            k;
+        this.S  = new Array(256);
+        for (n = 0; n < 256; n++) {
+            this.S[n] = n;
+        }
+        k = [];
+        while (seed) {
+            k.push(seed % 256);
+            seed = Math.floor(seed / 256);
+        }
+        this.i = 0;
+        this.j = 0;
+        for (; this.i < 256; this.i++) {
+            this.j = (k[this.i % k.length] + this.S[this.i] + this.j) & 0xff;
+            this.swap();
+        }
+        this.i = 0;
+        this.j = 0;
+        for (n = 0; n < 256; n++) {
+            this.prg();
+        }
     }
-}
-Board.prototype.deal = function () {
-    this.doDeal();
-    this.moves.push(new DealMove(this));
-    return this;
-}
-Board.prototype.canDeal = function () {
-    return this.deck != null && !this.deck.isEmpty() && this.current == null;
-}
-Board.prototype.undo = function () {
-    if (this.current != null) {
-        this.current.undo();
+    ARC4.prototype.swap = function () {
+        var tmp = this.S[this.i];
+        this.S[this.i] = this.S[this.j];
+        this.S[this.j] = tmp;
+    };
+    ARC4.prototype.prg = function () {
+        /*jslint bitwise: false */
+        this.i = (this.i + 1) & 0xff;
+        this.j = (this.j + this.S[this.i]) & 0xff;
+        this.swap();
+        return this.S[(this.S[this.i] + this.S[this.j]) & 0xff];
+    };
+    ARC4.prototype.random = function () {
+        var r = 0,
+            n;
+        for (n = 0; n < 7; n++) {
+            r = r * 256 + this.prg();
+        }
+        return r / 0x100000000000000;
+    };
+
+    function Card(face, suit) {
+        this.face = face;
+        this.suit = suit;
+        this.up = null;
+        this.down = null;
+        this.showing = false;
+    }
+    Card.prototype.skipFlush = function () {
+        var c = this,
+            d;
+        while (true) {
+            d = c;
+            c = c.up;
+            if (c === null) {
+                return d;
+            }
+            if (c.suit.name !== d.suit.name || 
+                    c.face.value !== d.face.value - 1) {
+                return d;
+            }
+        }
+    };
+    Card.prototype.isFlush = function () {
+        return this.skipFlush().up === null;
+    };
+    Card.prototype.toString = function () {
+        var s = "";
+        if (!this.showing) {
+            s = "_";
+        }
+        return s + this.face.toString() + this.suit.toString();
+    };
+
+    function Suit(name, chr, ord) {
+        this.name = name;
+        this.chr = chr;
+        this.ord = ord;
+    }
+    Suit.prototype.toString = function () {
+        return this.name;
+    };
+    SUITS = [new Suit("S", "\u2663", 0), new Suit("H", "\u2665", 1), 
+            new Suit("C", "\u2660", 2), new Suit("D", "\u2666", 3)];
+
+    function Face(name, value) {
+        this.name = name;
+        this.value = value;
+    }
+    Face.prototype.toString = function () {
+        return this.name;
+    };
+    FACES = [new Face("A", 1), new Face("2", 2), new Face("3", 3), 
+        new Face("4", 4), new Face("5", 5), new Face("6", 6), new Face("7", 7), 
+        new Face("8", 8), new Face("9", 9), new Face("T", 10), 
+        new Face("J", 11), new Face("Q", 12), new Face("K", 13)];
+
+    function Deck(ndecks, nsuits, seed) {
+        var suits,
+            i,
+            d,
+            f,
+            s,
+            r,
+            j,
+            c;
+        this.nsuits = nsuits;
+        if (nsuits === null) {
+            this.nsuits = SUITS.length;
+        }
+        this.seed = seed;
+        if (!seed) {
+            this.seed = new Date().getTime();
+        }
+        suits = [];
+        for (i = 0; i < SUITS.length; i++) {
+            suits.push(SUITS[i % this.nsuits]);
+        }
+        this.deck = [];
+        for (d = 0; d < ndecks; d++) {
+            for (f = 0; f < FACES.length; f++) {
+                for (s = 0; s < suits.length; s++) {
+                    this.deck.push(new Card(FACES[f], suits[s]));
+                }
+            }
+        }
+        r = new ARC4(this.seed);
+        for (i = 0; i < this.deck.length; i++) {
+            j = i + Math.floor(r.random() * (this.deck.length - i));
+            c = this.deck[i];
+            this.deck[i] = this.deck[j];
+            this.deck[j] = c;
+        }
+    }
+    Deck.prototype.draw = function () {
+        if (this.deck.length === 0) {
+            return null;
+        }
+        return this.deck.pop();
+    };
+    Deck.prototype.undoDraw = function (card) {
+        if (card !== null) {
+            this.deck.push(card);
+        }
+    };
+    Deck.prototype.isEmpty = function () {
+        return this.deck.length <= 0;
+    };
+    Deck.prototype.size = function () {
+        return this.deck.length;
+    };
+
+    function Move(src, split, dst) {
+        this.src = src;
+        this.srcI = src.getIndex();
+        this.split = split;
+        this.splitI = src.getCardIndex(split);
+        this.dst = null;
+        this.carry = null;
+        this.doSplit();
+        this.topShowing = src.isTopShowing();
+        if (dst !== null) {
+            this.addDst(dst);
+        }
+    }
+    Move.prototype.addDst = function (dst) {
+        if (dst  !== this.src && !dst.canJoinWith(this.carry)) {
+            return false;
+        }
+        this.dst = dst;
+        this.dstI = dst.getIndex();
+        this.doJoin();
+        return true;
+    };
+    Move.prototype.doSplit = function () {
+        this.carry = this.src.splitAt(this.split);
+    };
+    Move.prototype.doJoin = function () {
+        this.dst.joinWith(this.carry);
+        this.carry = null;
+        if (this.dst === this.src) { // undo
+            return;
+        }
+        this.src.showTop(true);
+        return;
+    };
+    Move.prototype.undo = function () {
+        if (this.dst === null) {
+            this.dst = this.src;
+            this.doJoin();
+        } else {
+            this.carry = this.dst.splitAt(this.split);
+            this.src.showTop(this.topShowing);
+            this.src.joinWith(this.carry);
+            this.carry = null;
+        }
+    };
+    Move.prototype.redo = function () {
+        this.doSplit();
+        this.doJoin();
+    };
+    Move.prototype.toString = function () {
+        var s = "";
+        if (this.carry) {
+            return s;
+        }
+        s = this.srcI.toString();
+        s += this.splitI.toString(16);
+        s += this.dstI >= 10 ? 'F' : this.dstI.toString();
+        return s;
+    };
+
+    function DealMove(board) {
+        this.board = board;
+    }
+    DealMove.prototype.undo = function () {
+        this.board.undoDeal();
+    };
+    DealMove.prototype.redo = function () {
+        this.board.doDeal();
+    };
+    DealMove.prototype.toString = function () {
+        return "FFF";
+    };
+
+    function Column(board, top, bottom) {
+        this.board = board;
+        this.bottom = bottom;
+        this.top = top;
+        this.modified = true;
+    }
+    Column.prototype.length = function () {
+        var l = 0,
+            c = this.top;
+        while (c !== null) {
+            l++;
+            c = c.down;
+        }
+        return l;
+    };
+    Column.prototype.cardAt = function (cardI) {
+        var c, i;
+        if (cardI < 0) {
+            return null;
+        }
+        c = this.bottom;
+        i = 0;
+        while (i < cardI && c !== null) {
+            c = c.up;
+            i++;
+        }
+        return c;
+    };
+    Column.prototype.selectCard = function () {
+        var c = this.top;
+        while (c.down !== null && c.down.showing && c.down.isFlush()) {
+            c = c.down;
+        }
+        return c;
+    };
+    Column.prototype.selectDst = function (card) {
+        var columns = this.board.columns,
+            empty = null,
+            faceMatch = null,
+            faceAndSuitMatch = null,
+            i,
+            dst;
+        for (i = 0; i < 10; i++) {
+            if (columns[i] === this) {
+                continue;
+            } else if (columns[i].top === null) {
+                empty = columns[i];
+            } else if (columns[i].canJoinWithCard(card)) {
+                faceMatch = columns[i];
+                if (columns[i].top.suit.name === card.suit.name) {
+                    faceAndSuitMatch = columns[i];
+                }
+            }
+        }
+        dst = faceAndSuitMatch;
+        if (dst === null) {
+            dst = faceMatch;
+        }
+        if (dst === null) {
+            dst = empty;
+        }
+        return dst;
+    };
+    Column.prototype.clickOnCard = function (card) {
+        var m = this.board.getCurrentMove(),
+            dst,
+            autoSelect;
+        if (m === null) {
+            dst = null;
+            autoSelect = false;
+            if (card === null || !card.showing || !card.isFlush()) {
+                if (this.top === null || !this.top.showing) {
+                    return;
+                }
+                card = this.selectCard();
+                autoSelect = true;
+            }
+            if (card.face.name === "K" && this.top.face.name === "A") {
+                dst = this.board.getEmptySeries();
+            } else if (autoSelect) {
+                dst = this.selectDst(card);
+            }
+            this.board.setCurrentMove(new Move(this, card, dst));
+            if (dst !== null) {
+                this.board.saveCurrentMove();
+            }
+        } else {
+            if (m.addDst(this)) {
+                if (m.src === this) { // undo
+                    this.board.setCurrentMove(null);
+                } else {
+                    this.board.saveCurrentMove();
+                }
+            }
+        }
+    };
+    Column.prototype.isModified = function () {
+        return this.modified;
+    };
+    Column.prototype.resetModified = function () {
+        this.modified = false;
+    };
+    Column.prototype.setModifed = function () {
+        this.modified = true;
+    };
+    Column.prototype.countHidden = function () {
+        var count = 0,
+            c = this.bottom;
+        while (c !== null && !c.showing) {
+            count++;
+            c = c.up;
+        }
+        return count;
+    };
+    Column.prototype.isTopShowing = function () {
+        if (this.top !== null) {
+            return this.top.showing;
+        }
+        return false;
+    };
+    Column.prototype.showTop = function (val) {
+        if (this.top !== null) {
+            if (this.top.showing !== val) {
+                this.modified = true;
+                this.top.showing = val;
+            }
+        }
+    };
+    Column.prototype.canJoinWithCard = function (card) {
+        if (this.top === null) {
+            return true;
+        }
+        if (this.top.face.value === card.face.value + 1) {
+            return true;
+        }
+        return false;
+    };
+    Column.prototype.canJoinWith = function (column) {
+        return this.canJoinWithCard(column.bottom);
+    };
+    Column.prototype.joinWith = function (column) {
+        if (column === null) {
+            return;
+        }
+        this.modified = true;
+        column.bottom.down = this.top;
+        if (this.top !== null) {
+            this.top.up = column.bottom;
+        } else {
+            this.bottom = column.bottom;
+        }
+        this.top = column.top;
+    };
+    Column.prototype.splitAt = function (card) {
+        var column;
+        if (card === null) {
+            return null;
+        }
+        this.modified = true;
+        column = new Column(this.board, this.top, card);
+        this.top = card.down;
+        if (this.top !== null) {
+            this.top.up = null;
+        } else {
+            this.bottom = null;
+        }
+        card.down = null;
+        return column;
+    };
+    Column.prototype.getCardIndex = function (card) {
+        var i = 0,
+            d = this.bottom;
+        while (d !== null) {
+            if (d === card) {
+                return i;
+            }
+            i++;
+            d = d.up;
+        }
+        throw (new Error('cannot find split card in column'));
+    };
+    Column.prototype.getIndex = function () {
+        return this.board.getColumnIndex(this);
+    };
+    Column.prototype.toString = function () {
+        var s = "",
+            notShowing = 0,
+            c = this.bottom,
+            d;
+        while (c !== null) {
+            if (c.showing) {
+                d = c.skipFlush();
+                s += c.toString();
+                if (d !== c) {
+                    s += " .." + d.toString();
+                    c = d;
+                }
+            } else {
+                notShowing = notShowing + 1;
+            }
+            c = c.up;
+        }
+        if (notShowing === 0) {
+            return s;
+        }
+        return "[" + notShowing + "]" + s;
+    };
+
+    function Stack() {
+        this.reset();
+    }
+    Stack.prototype.reset = function () {
+        this.vector = [];
+        this.done = 0;
+    };
+    Stack.prototype.canUndo = function () {
+        return this.done > 0;
+    };
+    Stack.prototype.canRedo = function () {
+        return this.done < this.vector.length;
+    };
+    Stack.prototype.size = function () {
+        return this.done;
+    };
+    Stack.prototype.peek = function () {
+        return this.vector[this.done - 1];
+    };
+    Stack.prototype.pop = function () {
+        return this.vector[--this.done];
+    };
+    Stack.prototype.push = function (move) {
+        this.vector.splice(this.done, this.vector.length - this.done, move);
+        this.done++;
+    };
+    Stack.prototype.rePush = function () {
+        return this.vector[this.done++];
+    };
+    Stack.prototype.toString = function () {
+        var s = "",
+            i;
+        for (i = 0; i < this.done; i++) {
+            s += this.vector[i].toString();
+        }
+        return s;
+    };
+
+    function Board() {
+        var i,
+            cc;
+        this.deck = null;
+        this.columns = [];
+        for (i = 0; i < 10; i++) {
+            cc = new Column(this, null, null);
+            this.columns.push(cc);
+        }
+        this.series = [];
+        for (i = 0; i < 8; i++) {
+            cc = new Column(this, null, null);
+            this.series.push(cc);
+        }
+        this.moves = new Stack();
         this.current = null;
     }
-    else if (this.moves.canUndo()) {
-        this.moves.pop().undo();
-    }
-}
-Board.prototype.canUndo = function () {
-    return this.current != null || this.moves.canUndo();
-}
-Board.prototype.redo = function () {
-    if (this.moves.canRedo()) {
-        this.moves.rePush().redo();
-    }
-}
-Board.prototype.canRedo = function () {
-    return this.current == null && this.moves.canRedo();
-}
-Board.prototype.deckSize = function () {
-    return this.deck == null ? 0 : this.deck.size();
-}
-Board.prototype.getCarry = function () {
-    if (this.current != null) {
-        return this.current.carry;
-    }
-    return null;
-}
-Board.prototype.getSrc = function () {
-    if (this.current != null) {
-        return this.current.src;
-    }
-    return null;
-}
-Board.prototype.countHidden = function () {
-    var count = 0;
-    for (var i = 0; i < this.columns.length; i++) {
-        count += this.columns[i].countHidden();
-    }
-    return count;
-}
-Board.prototype.countSeries = function () {
-    var count = 0;
-    for (var i = 0; i < this.series.length; i++) {
-        if (this.series[i] != null && this.series[i].top != null) {
-            count++;
+    Board.isShort = [
+        false, true, true, false, true, true, false, true, true, false];
+    Board.prototype.initialDeal = function () {
+        var i,
+            r,
+            c,
+            cc;
+        for (i = 0; i < this.columns.length; i++) {
+            this.columns[i].splitAt(this.columns[i].bottom);
         }
-    }
-    return count;
-}
-Board.prototype.isGameOpen = function () {
-    return this.countSeries() == 8;
-}
-Board.prototype.countMoves = function () {
-    return this.moves.size();
-}
-Board.prototype.undoDeal = function () {
-    for (var i = this.columns.length - 1; i >= 0; i--) {
-        var c = this.columns[i].top;
-        this.columns[i].splitAt(c);
-        this.deck.undoDraw(c);
-    }
-}
-Board.prototype.getEmptySeries = function () {
-    for (var i = 0; i < this.series.length; i++) {
-        if (this.series[i].top == null) {
-            return this.series[i];
+        for (i = 0; i < this.series.length; i++) {
+            this.series[i].splitAt(this.series[i].bottom);
         }
-    }
-    throw (new Error('No empty series'));
-}
-Board.prototype.getCurrentMove = function () {
-    return this.current;
-}
-Board.prototype.setCurrentMove = function (move) {
-    this.current = move;
-}
-Board.prototype.saveCurrentMove = function () {
-    this.moves.push(this.current);
-    this.current = null;
-}
-Board.prototype.getColumnIndex = function (column) {
-    var i = 0;
-    for (; i < this.columns.length; i++) {
-        if (column == this.columns[i]) {
-            return i;
+        for (r = 0; r < 6; r++) {
+            for (i = 0; i < 10; i++) {
+                if (r === 5 && Board.isShort[i]) {
+                    continue;
+                }
+                c = this.deck.draw();
+                cc = new Column(this, c, c);
+                if ((r === 4 && Board.isShort[i]) || r === 5) {
+                    c.showing = true;
+                }
+                this.columns[i].joinWith(cc);
+            }
         }
-    }
-    for (var j = 0; j < this.series.length; j++) {
-        if (column == this.series[j]) {
-            return i + j;
+    };
+    Board.prototype.start = function (nsuits, seed) {
+        this.moves.reset();
+        this.current = null;
+        nsuits = parseInt(nsuits, 10);
+        if (nsuits !== 4 && nsuits !== 2 && nsuits !== 1) {
+            nsuits = null;
         }
-    }
-    throw (new Error('Cannot find column'));
-}
+        this.deck = new Deck(2, nsuits, parseInt(seed, 10));
+        this.initialDeal();
+        return this;
+    };
+    Board.prototype.canStart = function () {
+        return this.deck === null || 
+            (this.deck.isEmpty() && this.current === null);
+    };
+    Board.prototype.doDeal = function () {
+        var i,
+            c;
+        for (i = 0; i < this.columns.length; i++) {
+            c = this.deck.draw();
+            if (c === null) {
+                throw (new Error('Empty deck'));
+            }
+            c.showing = true;
+            this.columns[i].joinWith(new Column(this, c, c));
+        }
+    };
+    Board.prototype.deal = function () {
+        this.doDeal();
+        this.moves.push(new DealMove(this));
+        return this;
+    };
+    Board.prototype.canDeal = function () {
+        return this.deck !== null && !this.deck.isEmpty() && 
+            this.current === null;
+    };
+    Board.prototype.undo = function () {
+        if (this.current !== null) {
+            this.current.undo();
+            this.current = null;
+        } else if (this.moves.canUndo()) {
+            this.moves.pop().undo();
+        }
+    };
+    Board.prototype.canUndo = function () {
+        return this.current !== null || this.moves.canUndo();
+    };
+    Board.prototype.redo = function () {
+        if (this.moves.canRedo()) {
+            this.moves.rePush().redo();
+        }
+    };
+    Board.prototype.canRedo = function () {
+        return this.current === null && this.moves.canRedo();
+    };
+    Board.prototype.deckSize = function () {
+        return this.deck === null ? 0 : this.deck.size();
+    };
+    Board.prototype.getCarry = function () {
+        if (this.current !== null) {
+            return this.current.carry;
+        }
+        return null;
+    };
+    Board.prototype.getSrc = function () {
+        if (this.current !== null) {
+            return this.current.src;
+        }
+        return null;
+    };
+    Board.prototype.countHidden = function () {
+        var count = 0,
+            i;
+        for (i = 0; i < this.columns.length; i++) {
+            count += this.columns[i].countHidden();
+        }
+        return count;
+    };
+    Board.prototype.countSeries = function () {
+        var count = 0,
+            i;
+        for (i = 0; i < this.series.length; i++) {
+            if (this.series[i] !== null && this.series[i].top !== null) {
+                count++;
+            }
+        }
+        return count;
+    };
+    Board.prototype.isGameOpen = function () {
+        return this.deckSize() === 0 && this.countSeries() === 8;
+    };
+    Board.prototype.countMoves = function () {
+        return this.moves.size();
+    };
+    Board.prototype.undoDeal = function () {
+        var i,
+            c;
+        for (i = this.columns.length - 1; i >= 0; i--) {
+            c = this.columns[i].top;
+            this.columns[i].splitAt(c);
+            this.deck.undoDraw(c);
+        }
+    };
+    Board.prototype.getEmptySeries = function () {
+        var i;
+        for (i = 0; i < this.series.length; i++) {
+            if (this.series[i].top === null) {
+                return this.series[i];
+            }
+        }
+        throw (new Error('No empty series'));
+    };
+    Board.prototype.getCurrentMove = function () {
+        return this.current;
+    };
+    Board.prototype.setCurrentMove = function (move) {
+        this.current = move;
+    };
+    Board.prototype.saveCurrentMove = function () {
+        this.moves.push(this.current);
+        this.current = null;
+    };
+    Board.prototype.getColumnIndex = function (column) {
+        var i = 0,
+            j;
+        for (; i < this.columns.length; i++) {
+            if (column === this.columns[i]) {
+                return i;
+            }
+        }
+        for (j = 0; j < this.series.length; j++) {
+            if (column === this.series[j]) {
+                return i + j;
+            }
+        }
+        throw (new Error('Cannot find column'));
+    };
 
-function DealMove(board) {
-    this.board = board;
-}
-DealMove.prototype.undo = function () {
-    this.board.undoDeal();
-}
-DealMove.prototype.redo = function () {
-    this.board.doDeal();
-}
-DealMove.prototype.toString = function () {
-    return "FFF";
-}
+    function resize() {
+        control.resize();
+        view.resize();
+    }
 
-function touch(event) {
-    event.preventDefault();
-    if (event.type == "touchstart") {
-        return mouseDown(event.changedTouches[0]);
+    function load() { 
+        game = document.getElementById('game');
+        canvas = document.getElementById('board');
+        control.load(canvas);
+        info = document.getElementById('info');
+        info.style.display = "none";
+
+        cards = [document.getElementById('spades'),
+            document.getElementById('hearts'),
+            document.getElementById('clubs'),
+            document.getElementById('diamonds')];
+
+        loadState();
+        board = new Board();
+        start(conf.seed);
+        resize();
     }
-    if (event.type == "touchmove") {
-        return mouseMove(event.changedTouches[0]);
-    }
-    if (event.type == "touchend") {
-        return mouseUp(event.changedTouches[0]);
-    }
-}
-return {
-    load: function () {return load()},
-    keypress: function (event) {return keypress(event)},
-    resize: function () {return resize()}
-}
-})();
+
+    window.addEventListener("load", load, false);
+    window.addEventListener("resize", resize, false);
+
+}());
 </script>
 </head>
-<body onload="spider.load()" onkeypress="spider.keypress(event)" 
-        onresize="spider.resize()">
-<div id="header">
-<!--
-<button id="undo" type="button" onclick="pressChar('u')">Undo</button>
-<button id="redo" type="button" onclick="pressChar('r')">Redo</button>
-<button id="deal" type="button" onclick="pressChar('d')">Deal</button>
-<button id="start" type="button" onclick="pressChar('s')">Restart</button>
-<button id="hide" type="button" onclick="pressChar('h')">Show</button>
--->
-</div>
+<body>
+<div id="info"></div>
+<div id="game">
 <canvas id="board">
 Your browser does not seem to support the canvas tag.
 </canvas>
+</div>
 <img class="cards" id="hearts" src="data:image/png;base64,
 iVBORw0KGgoAAAANSUhEUgAAA6gAAABgCAMAAAAnzK9eAAAAvVBMVEUAAAAIEBgpEBgQISkpMTF7
 EBhSECFaKSk5QjlaUiF7cyljMXNCWlJaUlJzc1qtEBicKSm9MSn/AAjnKSn/MTGlUiGUeyG1eyHn
