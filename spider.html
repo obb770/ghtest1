@@ -3,7 +3,7 @@
 <html manifest="manifest">
 <head>
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="viewport" content="user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, width=device-width, height=device-height" />
+<meta name="viewport" content="user-scalable=no, initial-scale=1.0" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="apple-touch-icon-precomposed" href="touch-icon.png" />
 <link rel="apple-touch-startup-image" href="touch-startup-image.png" />
@@ -34,9 +34,9 @@ body {
 </style>
 <title>Spider</title>
 <script type="text/javascript">
-/*jslint plusplus: false, continue: true */
-/*global console */
+/*jslint browser: true */
 (function () {
+    "use strict";
     var green = "rgb(34, 139, 34)", // forestgreen
         tgreen = "rgba(34, 139, 34, 0.5)",
         tblue = "rgba(32, 32, 128, .8)",
@@ -47,6 +47,7 @@ body {
         view,
         command,
         control,
+        console = window.console,
         FALSE = false; // to allow disabling code with if and keep jslint happy
 
     board = (function () {
@@ -55,11 +56,10 @@ body {
             SUITS;
 
         ARC4 = function (seed) {
-            /*jslint bitwise: false */
             var n,
                 k;
-            this.S  = new Array(256);
-            for (n = 0; n < 256; n++) {
+            this.S  = [];
+            for (n = 0; n < 256; n += 1) {
                 this.S[n] = n;
             }
             k = [];
@@ -69,14 +69,13 @@ body {
             }
             this.i = 0;
             this.j = 0;
-            for (; this.i < 256; this.i++) {
-                this.j = (k[this.i % k.length] + this.S[this.i] + this.j) & 
-                    0xff;
+            for (; this.i < 256; this.i += 1) {
+                this.j = (k[this.i % k.length] + this.S[this.i] + this.j) % 256;
                 this.swap();
             }
             this.i = 0;
             this.j = 0;
-            for (n = 0; n < 256; n++) {
+            for (n = 0; n < 256; n += 1) {
                 this.prg();
             }
         };
@@ -86,16 +85,15 @@ body {
             this.S[this.j] = tmp;
         };
         ARC4.prototype.prg = function () {
-            /*jslint bitwise: false */
-            this.i = (this.i + 1) & 0xff;
-            this.j = (this.j + this.S[this.i]) & 0xff;
+            this.i = (this.i + 1) % 256;
+            this.j = (this.j + this.S[this.i]) % 256;
             this.swap();
-            return this.S[(this.S[this.i] + this.S[this.j]) & 0xff];
+            return this.S[(this.S[this.i] + this.S[this.j]) % 256];
         };
         ARC4.prototype.random = function () {
             var r = 0,
                 n;
-            for (n = 0; n < 7; n++) {
+            for (n = 0; n < 7; n += 1) {
                 r = r * 256 + this.prg();
             }
             return r / 0x100000000000000;
@@ -176,19 +174,19 @@ body {
                 this.seed = new Date().getTime();
             }
             suits = [];
-            for (i = 0; i < SUITS.length; i++) {
+            for (i = 0; i < SUITS.length; i += 1) {
                 suits.push(SUITS[i % this.nsuits]);
             }
             this.deck = [];
-            for (d = 0; d < ndecks; d++) {
-                for (f = 0; f < FACES.length; f++) {
-                    for (s = 0; s < suits.length; s++) {
+            for (d = 0; d < ndecks; d += 1) {
+                for (f = 0; f < FACES.length; f += 1) {
+                    for (s = 0; s < suits.length; s += 1) {
                         this.deck.push(new Card(FACES[f], suits[s]));
                     }
                 }
             }
             r = new ARC4(this.seed);
-            for (i = 0; i < this.deck.length; i++) {
+            for (i = 0; i < this.deck.length; i += 1) {
                 j = i + Math.floor(r.random() * (this.deck.length - i));
                 c = this.deck[i];
                 this.deck[i] = this.deck[j];
@@ -296,7 +294,7 @@ body {
             var l = 0,
                 c = this.top;
             while (c !== null) {
-                l++;
+                l += 1;
                 c = c.down;
             }
             return l;
@@ -310,7 +308,7 @@ body {
             i = 0;
             while (i < cardI && c !== null) {
                 c = c.up;
-                i++;
+                i += 1;
             }
             return c;
         };
@@ -328,15 +326,15 @@ body {
                 faceAndSuitMatch = null,
                 i,
                 dst;
-            for (i = 0; i < 10; i++) {
-                if (columns[i] === this) {
-                    continue;
-                } else if (columns[i].top === null) {
-                    empty = columns[i];
-                } else if (columns[i].canJoinWithCard(card)) {
-                    faceMatch = columns[i];
-                    if (columns[i].top.suit.name === card.suit.name) {
-                        faceAndSuitMatch = columns[i];
+            for (i = 0; i < 10; i += 1) {
+                if (columns[i] !== this) {
+                    if (columns[i].top === null) {
+                        empty = columns[i];
+                    } else if (columns[i].canJoinWithCard(card)) {
+                        faceMatch = columns[i];
+                        if (columns[i].top.suit.name === card.suit.name) {
+                            faceAndSuitMatch = columns[i];
+                        }
                     }
                 }
             }
@@ -395,7 +393,7 @@ body {
             var count = 0,
                 c = this.bottom;
             while (c !== null && !c.showing) {
-                count++;
+                count += 1;
                 c = c.up;
             }
             return count;
@@ -462,7 +460,7 @@ body {
                 if (d === card) {
                     return i;
                 }
-                i++;
+                i += 1;
                 d = d.up;
             }
             throw (new Error('cannot find split card in column'));
@@ -491,7 +489,7 @@ body {
             if (notShowing === 0) {
                 return s;
             }
-            return "[" + notShowing + "]" + s;
+            return "[" + String(notShowing) + "]" + s;
         };
 
         Stack = function () {
@@ -514,19 +512,22 @@ body {
             return this.vector[this.done - 1];
         };
         Stack.prototype.pop = function () {
-            return this.vector[--this.done];
+            this.done -= 1;
+            return this.vector[this.done];
         };
         Stack.prototype.push = function (move) {
             this.vector.splice(this.done, this.vector.length - this.done, move);
-            this.done++;
+            this.done += 1;
         };
         Stack.prototype.rePush = function () {
-            return this.vector[this.done++];
+            var e = this.vector[this.done];
+            this.done += 1;
+            return e;
         };
         Stack.prototype.toString = function () {
             var s = "",
                 i;
-            for (i = 0; i < this.done; i++) {
+            for (i = 0; i < this.done; i += 1) {
                 s += this.vector[i].toString();
             }
             return s;
@@ -537,12 +538,12 @@ body {
                 cc;
             this.deck = null;
             this.columns = [];
-            for (i = 0; i < 10; i++) {
+            for (i = 0; i < 10; i += 1) {
                 cc = new Column(this, null, null);
                 this.columns.push(cc);
             }
             this.series = [];
-            for (i = 0; i < 8; i++) {
+            for (i = 0; i < 8; i += 1) {
                 cc = new Column(this, null, null);
                 this.series.push(cc);
             }
@@ -557,23 +558,22 @@ body {
                 r,
                 c,
                 cc;
-            for (i = 0; i < this.columns.length; i++) {
+            for (i = 0; i < this.columns.length; i += 1) {
                 this.columns[i].splitAt(this.columns[i].bottom);
             }
-            for (i = 0; i < this.series.length; i++) {
+            for (i = 0; i < this.series.length; i += 1) {
                 this.series[i].splitAt(this.series[i].bottom);
             }
-            for (r = 0; r < 6; r++) {
-                for (i = 0; i < 10; i++) {
-                    if (r === 5 && Board.isShort[i]) {
-                        continue;
+            for (r = 0; r < 6; r += 1) {
+                for (i = 0; i < 10; i += 1) {
+                    if (r !== 5 || !Board.isShort[i]) {
+                        c = this.deck.draw();
+                        cc = new Column(this, c, c);
+                        if ((r === 4 && Board.isShort[i]) || r === 5) {
+                            c.showing = true;
+                        }
+                        this.columns[i].joinWith(cc);
                     }
-                    c = this.deck.draw();
-                    cc = new Column(this, c, c);
-                    if ((r === 4 && Board.isShort[i]) || r === 5) {
-                        c.showing = true;
-                    }
-                    this.columns[i].joinWith(cc);
                 }
             }
         };
@@ -590,14 +590,14 @@ body {
             for (i = 0; i + 2 < moves.length; i += 3) {
                 if (moves.substr(i, 3) === "FFF") {
                     this.deal();
-                    continue;
-                }
-                column = this.columns[parseInt(moves.substr(i, 1), 16)];
-                card = column.cardAt(parseInt(moves.substr(i + 1, 1), 16));
-                column.clickOnCard(card);
-                d = moves.substr(i + 2, 1);
-                if (d !== 'F') {
-                    this.columns[parseInt(d, 16)].clickOnCard(null);
+                } else {
+                    column = this.columns[parseInt(moves.substr(i, 1), 16)];
+                    card = column.cardAt(parseInt(moves.substr(i + 1, 1), 16));
+                    column.clickOnCard(card);
+                    d = moves.substr(i + 2, 1);
+                    if (d !== 'F') {
+                        this.columns[parseInt(d, 16)].clickOnCard(null);
+                    }
                 }
             }
             return this;
@@ -609,7 +609,7 @@ body {
         Board.prototype.doDeal = function () {
             var i,
                 c;
-            for (i = 0; i < this.columns.length; i++) {
+            for (i = 0; i < this.columns.length; i += 1) {
                 c = this.deck.draw();
                 if (c === null) {
                     throw (new Error('Empty deck'));
@@ -664,7 +664,7 @@ body {
         Board.prototype.countHidden = function () {
             var count = 0,
                 i;
-            for (i = 0; i < this.columns.length; i++) {
+            for (i = 0; i < this.columns.length; i += 1) {
                 count += this.columns[i].countHidden();
             }
             return count;
@@ -672,9 +672,9 @@ body {
         Board.prototype.countSeries = function () {
             var count = 0,
                 i;
-            for (i = 0; i < this.series.length; i++) {
+            for (i = 0; i < this.series.length; i += 1) {
                 if (this.series[i] !== null && this.series[i].top !== null) {
-                    count++;
+                    count += 1;
                 }
             }
             return count;
@@ -688,7 +688,7 @@ body {
         Board.prototype.undoDeal = function () {
             var i,
                 c;
-            for (i = this.columns.length - 1; i >= 0; i--) {
+            for (i = this.columns.length - 1; i >= 0; i -= 1) {
                 c = this.columns[i].top;
                 this.columns[i].splitAt(c);
                 this.deck.undoDraw(c);
@@ -696,7 +696,7 @@ body {
         };
         Board.prototype.getEmptySeries = function () {
             var i;
-            for (i = 0; i < this.series.length; i++) {
+            for (i = 0; i < this.series.length; i += 1) {
                 if (this.series[i].top === null) {
                     return this.series[i];
                 }
@@ -716,12 +716,12 @@ body {
         Board.prototype.getColumnIndex = function (column) {
             var i = 0,
                 j;
-            for (; i < this.columns.length; i++) {
+            for (; i < this.columns.length; i += 1) {
                 if (column === this.columns[i]) {
                     return i;
                 }
             }
-            for (j = 0; j < this.series.length; j++) {
+            for (j = 0; j < this.series.length; j += 1) {
                 if (column === this.series[j]) {
                     return i + j;
                 }
@@ -773,6 +773,7 @@ body {
                 board.start(conf.nsuits, conf.seed, conf.moves);
             } catch (e) {
                 window.alert(e);
+                window.alert(conf.moves);
             }
             save();
         };
@@ -785,7 +786,7 @@ body {
 
     view = (function () {
         var column_vspace, drawCard, drawColumn, update, columnAtX, cardAtY, 
-            resize, message, clickAt, load, 
+            resize, message, clickAt, load, drawStatus,
             OCWIDTH = 72,
             OCHEIGHT = 96,
             scale = 1,
@@ -797,6 +798,8 @@ body {
             voffset,
             cards,
             canvas,
+            bwidth,
+            bheight,
             ctx,
             cursor,
             info,
@@ -808,12 +811,12 @@ body {
             var vspace = MAX_VSPACE;
             if (clen) {
                 if (len + clen > 2) {
-                    vspace = (canvas.height - voffset - 
+                    vspace = (bheight - voffset - 
                         2 * CHEIGHT - MAX_VSPACE) / (len + clen - 2);
                 }
             } else {
                 if (len > 1) {
-                    vspace = (canvas.height - CHEIGHT - voffset - 10) / 
+                    vspace = (bheight - CHEIGHT - voffset - 10) / 
                         (len - 1);
                 }
             }
@@ -860,7 +863,7 @@ body {
                 c,
                 ex,
                 ey;
-            for (c = column.bottom; c; c = c.up, j++) {
+            for (c = column.bottom; c; c = c.up, j += 1) {
                 drawCard(c, x, y + vspace * j, CWIDTH, 
                         c !== column.top ? vspace : CHEIGHT);
             }
@@ -870,7 +873,7 @@ body {
                 cover.x = x;
             }
             if (cover.x < ex) {
-                ctx.fillRect(cover.x, ey, ex - cover.x, canvas.height - ey);
+                ctx.fillRect(cover.x, ey, ex - cover.x, bheight - ey);
                 cover.x = ex;
             }
             if (len === 0) {
@@ -881,42 +884,50 @@ body {
             }
             if (clen > 0) {
                 j = 0;
-                for (c = carry.bottom, j = 0; c; c = c.up, j++) {
+                for (c = carry.bottom, j = 0; c; c = c.up, j += 1) {
                     drawCard(c, x, 
-                            canvas.height - vspace * (clen - 1 - j) - CHEIGHT, 
+                            bheight - vspace * (clen - 1 - j) - CHEIGHT, 
                             CWIDTH, c !== carry.top ? vspace : CHEIGHT);
                 }
             }
+        };
+
+        drawStatus = function (myst) {
+            ctx.save();
+            ctx.font = "20px helvetica";
+            ctx.fillStyle = green;
+            (function () {
+                var xlen = ctx.measureText(myst).width,
+                    xoff = Math.floor((bwidth - xlen) / 2);
+                ctx.fillRect(xoff, 20, xlen, 20);
+                ctx.fillStyle = "white";
+                ctx.fillText(myst, xoff, 38);
+            }());
+            ctx.restore();
         };
 
         update = function (force) {
             var cover = {x: 0},
                 i;
     
-            for (i = 0; i < board.columns.length; i++) {
-                if (FALSE && !force && !board.columns[i].isModified()) {
-                    continue;
-                }
-                drawColumn(i, hoffset + i * hspace, voffset, cover);
-                if (!board.getCarry() || board.getSrc() !== board.columns[i]) {
-                    board.columns[i].resetModified();
+            for (i = 0; i < board.columns.length; i += 1) {
+                if (!FALSE || force || board.columns[i].isModified()) {
+                    drawColumn(i, hoffset + i * hspace, voffset, cover);
+                    if (!board.getCarry() || 
+                            board.getSrc() !== board.columns[i]) {
+                        board.columns[i].resetModified();
+                    }
                 }
             }
             if (mystatus) {
-                ctx.save();
-                ctx.font = "20px helvetica";
-                ctx.fillStyle = green;
-                ctx.fillRect(0, 20, ctx.measureText(mystatus).width, 20);
-                ctx.fillStyle = "white";
-                ctx.fillText(mystatus, 0, 38);
-                ctx.restore();
+                drawStatus(mystatus);
+                setTimeout(function () {mystatus = ""; update(true); }, 3000);
             }
-            mystatus = "";
             if (FALSE) {
                 ctx.save();
                 ctx.fillStyle = "red";
-                for (i = 1; 40 * i < canvas.height; i++) {
-                    ctx.fillRect(0, 40 * i, canvas.width, 2);
+                for (i = 1; 80 * i <= bheight; i += 1) {
+                    ctx.fillRect(0, 80 * i - 1, bwidth, 1);
                 }
             }
             ctx.restore();
@@ -970,23 +981,25 @@ body {
                 return;
             }
             var ncol;
-            canvas.width = canvas.offsetParent.offsetWidth;
-            canvas.height = canvas.offsetParent.offsetHeight;
+            canvas.width = canvas.offsetWidth;
+            bwidth = canvas.width;
+            canvas.height = canvas.offsetHeight;
+            bheight = canvas.height;
             control.resize(canvas);
-            console.log("resize: " + canvas.width + "x" + canvas.height);
+            console.log("resize: " + String(bwidth) + "x" + String(bheight));
             ctx = canvas.getContext('2d');
             ctx.fillStyle = green;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ncol = board.columns.length;
-            hspace = Math.floor((canvas.width - CWIDTH) / (ncol - 1));
+            hspace = Math.floor((bwidth - CWIDTH) / (ncol - 1));
             if (hspace > CWIDTH) {
-                hoffset = Math.floor((canvas.width - CWIDTH * ncol) / 
+                hoffset = Math.floor((bwidth - CWIDTH * ncol) / 
                         (ncol + 1));
                 hspace  = CWIDTH + hoffset;
-                hoffset = Math.floor((canvas.width - ncol * hspace) / 2);
+                hoffset = Math.floor((bwidth - ncol * hspace) / 2);
                 hoffset += Math.floor((hspace - CWIDTH) / 2);
             } else {
-                hoffset = Math.floor((canvas.width - (ncol - 1) * hspace - 
+                hoffset = Math.floor((bwidth - (ncol - 1) * hspace - 
                         CWIDTH) / 2);
             }
             voffset = 20;
@@ -1016,7 +1029,7 @@ body {
             j = cardAtY(i, y).j;
             column = board.columns[i];
             column.clickOnCard(column.cardAt(j));
-            //mystatus = canvas.width + "x" + canvas.height + " " + x + "," + y + " " + column.length() + ":" + i + "," + j + ":" + cardAtY(i, y).vspace;
+            mystatus = String(canvas.width) + "x" + String(canvas.height) + " " + String(x) + "," + String(y) + " " + String(column.length()) + ":" + String(i) + "," + String(j) + ":" + String(cardAtY(i, y).vspace);
             update(false);
             state.save();
             if (board.isGameOpen()) {
@@ -1071,10 +1084,10 @@ body {
                     cw = CWIDTH < hspace || i === board.columns.length - 1 ? 
                         CWIDTH : hspace;
                     saved_col = i;
-                    saved_image = ctx.getImageData(cx, 0, cw, canvas.height);
+                    saved_image = ctx.getImageData(cx, 0, cw, bheight);
                     ctx.save();
                     ctx.fillStyle = tred;
-                    ctx.fillRect(cx, 0, cw, canvas.height);
+                    ctx.fillRect(cx, 0, cw, bheight);
                     if (j !== -1) {
                         card = board.columns[i].cardAt(j);
                         if (card !== null && card.showing && card.isFlush()) {
@@ -1084,7 +1097,7 @@ body {
                             ctx.fillStyle = tblue;
                             ctx.fillRect(cx, cy, cw, ch);
                             saved_x = i < 5 ?  
-                                canvas.width - CWIDTH - 2 * margin : 0;
+                                bwidth - CWIDTH - 2 * margin : 0;
                             saved_card = ctx.getImageData(saved_x, saved_y, 
                                     CWIDTH + 2 * margin, CHEIGHT + 2 * margin);
                             ctx.fillRect(saved_x, saved_y, 
@@ -1118,13 +1131,14 @@ body {
         };
 
         return {
-            width: function () {return canvas.width; },
-            height: function () {return canvas.height; },
+            width: function () {return bwidth; },
+            height: function () {return bheight; },
             cursorAt: cursor.changePos,
             clickAt: clickAt,
             message: message,
             resize: resize,
             load: load,
+            drawStatus: drawStatus,
             update: update
         };
     }());
@@ -1168,7 +1182,7 @@ body {
                     if (nsuits > 4) {
                         nsuits = 1;
                     }
-                    view.message("Playing with " + nsuits + " suit" + 
+                    view.message("Playing with " + String(nsuits) + " suit" + 
                             (nsuits > 1 ? "s" : ""));
                     state.load(nsuits.toString(), false);
                 } else {
@@ -1236,18 +1250,19 @@ body {
             var x = event.clientX - offsetLeft, y = event.clientY - offsetTop;
 
             if (FALSE) {
-                console.log("move: " + x + "," + y);
+                console.log("move: " + String(x) + "," + String(y));
             }
             if (!isGesture) {
                 view.cursorAt(x, y);
             }
+            view.drawStatus(String(x) + "+" + String(offsetLeft) + "," + String(y) + "+" + String(offsetTop));
             return true;
         };
 
         mouseDown = function (event) {
             var x = event.clientX - offsetLeft, y = event.clientY - offsetTop;
 
-            console.log("down: " + x + "," + y);
+            console.log("down: " + String(x) + "," + String(y));
             bx = x;
             by = y;
             isGesture = true;
@@ -1266,7 +1281,7 @@ body {
                 ver,
                 isClick;
 
-            console.log("up: " + x + "," + y);
+            console.log("up: " + String(x) + "," + String(y));
             clearTimeout(timeoutId);
             this.removeEventListener("mousemove", mouseMove, false);
             view.cursorAt(-1, -1);
@@ -1304,11 +1319,11 @@ body {
                 isClick = true;
             }
             if (isClick) {
-                console.log("click: " + x + "," + y);
+                console.log("click: " + String(x) + "," + String(y));
                 view.clickAt(x, y);
                 return true;
             }
-            console.log("noclick: " + x + "," + y);
+            console.log("noclick: " + String(x) + "," + String(y));
         };
 
         touch = function (event) {
@@ -1346,7 +1361,8 @@ body {
                 offsetLeft += obj.offsetLeft;
                 offsetTop += obj.offsetTop;
             }
-            console.log("resize: +" + offsetLeft + "," + offsetTop);
+            console.log("resize: +" + 
+                    String(offsetLeft) + "," + String(offsetTop));
         };
 
         return {
@@ -1365,6 +1381,15 @@ body {
             lastTimer = setTimeout(function () {view.resize(); }, 500);
         }, false);
     }());
+
+    (function () {
+        window.addEventListener("orientationchange", function () {
+            setTimeout(function () {
+                view.message("Orientation: " + String(window.orientation));
+            }, 100);
+        }, false);
+    }());
+
 
 }());
 </script>
